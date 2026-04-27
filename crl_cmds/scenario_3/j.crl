@@ -1,0 +1,18 @@
+curl -s -X POST http://localhost:8080/pricing/requests/control \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jobControl": {
+      "Id": "18284046-96e5-40cf-be2c-b9f0549e5sc3",
+      "requestedAt": "2026-03-23T12:00:00Z",
+      "timeToWait": "20000"
+    },
+    "payload": {
+      "ensxtx_Action__c": "Simulate",
+      "ensxtx_JSName__c": "ensxtxSalesDocInvocableActions_compiled",
+      "ensxtx_ObjectType__c": "Quote",
+      "ensxtx_RecordId__c": "1Q0Nq000003JOMfKA1",
+      "ensxtx_CurrentUserId__c": "005Nq00000ZYx4pIAD",
+      "ensxtx_SapDocumentType__c": "Quote",
+      "ensxtx_InstanceNumber__c": 6
+    }
+  }'

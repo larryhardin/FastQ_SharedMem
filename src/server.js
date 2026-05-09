@@ -63,37 +63,60 @@ const server = http.createServer((req, res) => {
       const jobPromise = jobQueue.push({ jobControl, payload, recordUuid });
       const timeToWait = Math.min(parseInt(jobControl.timeToWait, 10) || 0, 60000);
       const pollInterval = Math.max(10, Math.floor(timeToWait / 4));
-      let pollForResult = setInterval(() => {
-        if (workers.filter(w => w.pending > 0).length === 0) {
-          clearInterval(pollForResult);
+      const maxPolls = Math.ceil(timeToWait / pollInterval);
+      let pollCount = 1;
+      let responseSent = false;
+      function safeRespond(statusCode, body) {
+        if (!responseSent) {
+          responseSent = true;
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(body));
         }
-      }, pollInterval);
+      }
+      function pollJob() {
+        console.log(`Polling ${pollCount}/${maxPolls} for job ${jobControl.Id}`);
+        const entry = requestMap.readByUuid(recordUuid);
+        if (!entry) {
+          console.log(`Job ${jobControl.Id} is no longer running (detected in interval). Returning 200.`);
+          safeRespond(200, { jobId: jobControl.Id, status: 'Completed', message: 'Job completed while waiting.' });
+          return;
+        }
+        if (pollCount >= maxPolls) {
+          console.log(`Job ${jobControl.Id} is still running after all intervals. Returning 202.`);
+          safeRespond(202, { jobId: jobControl.Id, status: 'Waiting', message: 'Job is still running after waiting period.' });
+          return;
+        }
+        pollCount++;
+        setTimeout(pollJob, pollInterval);
+      }
+      setTimeout(pollJob, pollInterval);
       jobPromise.then(result => {
-        clearInterval(pollForResult);
+        // polling is handled by setTimeout, nothing to clear
+        if (responseSent) return;
         if (!result) {
           const entry = requestMap.readByUuid(recordUuid);
           if (entry?.status === 'Waiting') {
             requestMap.removeByUuid(recordUuid);
-            res.writeHead(202, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ jobId: jobControl.Id, status: 'Waiting', message: 'Request is waiting on another in-flight job.' }));
+            safeRespond(202, { jobId: jobControl.Id, status: 'Waiting', message: 'Request is waiting on another in-flight job.' });
             return;
           }
           if (entry?.status === 'Skipping') {
             requestMap.removeByUuid(recordUuid);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ jobId: jobControl.Id, status: 'Skipping', message: 'Request skipped (no input change, no async in process).' }));
+            safeRespond(200, { jobId: jobControl.Id, status: 'Skipping', message: 'Request skipped (no input change, no async in process).' });
             return;
           }
+          // If result is undefined and not handled above, return 202 as a fallback
+          safeRespond(202, { jobId: jobControl.Id, status: 'Waiting', message: 'No result returned, job may still be processing.' });
+          return;
         }
         requestMap.removeByUuid(recordUuid);
         const { _recordUuid, ...responseData } = result;
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(responseData));
+        safeRespond(200, responseData);
       }).catch(err => {
-        clearInterval(pollForResult);
+        // polling is handled by setTimeout, nothing to clear
+        if (responseSent) return;
         if (err._recordUuid) requestMap.update(err._recordUuid, 'Error');
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Internal server error', details: err.message }));
+        safeRespond(500, { error: 'Internal server error', details: err.message });
       });
     });
     return;
@@ -102,4 +125,8 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-server.listen(PORT);
+server.listen(PORT, () => {
+  const address = server.address();
+  const host = address.address === '::' ? 'localhost' : address.address;
+  console.log(`Server is running at http://${host}:${address.port}/`);
+});

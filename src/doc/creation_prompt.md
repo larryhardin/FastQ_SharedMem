@@ -2,6 +2,10 @@
 Here is the generated prompt I used to create and (almost) deploy this project.
 Before getting this to run, I had to convert the require statements to imports.
 
+I had an existing and working project that I had created by hand. Then, from within that project, I gave copilot this instruction:
+"Create a prompt that I can use to recreate this project. Do not include any of the console.log statements."
+
+This was the output.
 
 Build a Node.js HTTP service using `fastq` (v1.20.1) and `dotenv` (no other frameworks).
 The project has four source files: src/server.js, src/index.js, src/worker.js, src/requestMap.js.
